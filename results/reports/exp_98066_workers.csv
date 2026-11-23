@@ -1,0 +1,5 @@
+worker_id,tasks_completed,tasks_stolen_by,tasks_stolen_from,steal_attempts,steal_successes,busy_ms,idle_ms,utilization
+0,115,0,0,0,0,193.4494,0.0,0.971461
+1,114,0,0,0,0,193.5617,0.0,0.972025
+2,114,0,0,0,0,192.0438,0.0,0.964403
+3,114,0,0,0,0,191.7854,0.0,0.963105

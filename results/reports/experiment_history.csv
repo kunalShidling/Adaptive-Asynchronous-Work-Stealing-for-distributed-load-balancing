@@ -1,0 +1,4 @@
+experiment_id,timestamp,algorithm,workload_type,num_workers,num_tasks,random_seed,wall_ms,sequential_ms,speedup,efficiency,avg_utilization,load_imbalance,total_steals_attempted,total_steals_succeeded,steal_success_rate,total_tasks_stolen,scheduling_overhead_ms,cost_estimation_mape
+98064,2026-11-22T14:28:11.627768,adaptive,uniform,4,200,42,100.0195,345.1212,3.450539,0.862635,0.938566,0.012095,188,0,0.0,0,0.127,183.296322
+98065,2026-11-23T11:14:58.052770,adaptive,uniform,4,200,42,130.5623,374.0201,2.864687,0.716172,0.946729,0.017822,119,0,0.0,0,0.3313,118.301191
+98066,2026-11-23T11:20:06.884975,static,uniform,4,457,42,199.1324,1008.3971,5.063953,1.265988,0.967748,0.00416,0,0,0.0,0,0.0,0.0

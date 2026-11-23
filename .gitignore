@@ -1,0 +1,25 @@
+# Build output
+build/
+bin/
+*.exe
+*.o
+*.obj
+*.a
+*.so
+*.dll
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.egg-info/
+.venv/
+env/
+venv/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

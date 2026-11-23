@@ -1,0 +1,19 @@
+{
+  "experiment_id": 999,
+  "algorithm": "adaptive",
+  "num_workers": 4,
+  "num_tasks": 20,
+  "workload_type": "heterogeneous",
+  "min_complexity": 500,
+  "max_complexity": 2000,
+  "random_seed": 42,
+  "results_dir": "d:/MAP_PROJECT/results/experiments",
+  "stealing": {
+    "ewma_alpha": 0.3,
+    "min_benefit_ms": 0.5,
+    "overhead_ms": 0.1,
+    "max_batch_size": 8,
+    "min_victim_queue": 2,
+    "victim_policy": "max_remaining_cost"
+  }
+}
