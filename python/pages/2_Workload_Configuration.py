@@ -55,9 +55,12 @@ col_left, col_right = st.columns([3, 2])
 with col_left:
     st.subheader("Experiment Settings")
 
+    algo_keys = list(ALGORITHMS.keys())
+    default_algo_idx = algo_keys.index("adaptive") if "adaptive" in algo_keys else 0
     algorithm = st.selectbox(
         "Scheduling Algorithm",
-        options=list(ALGORITHMS.keys()),
+        options=algo_keys,
+        index=default_algo_idx,
         format_func=lambda k: ALGORITHMS[k],
     )
 
@@ -79,6 +82,50 @@ with col_left:
     with r2c2:
         max_complexity = int(st.number_input("Max Task Complexity", 100, 1000000, 10000, step=500))
 
+    # ── Heterogeneous Nodes & Cluster Capabilities ───────────────────────────
+    st.markdown("---")
+    st.subheader("🌐 Heterogeneous Node Classification & Speeds")
+    cluster_profile = st.selectbox(
+        "Node Capability Profile",
+        [
+            "Heterogeneous Cluster (VERY_FAST [8x], FAST [4x], MEDIUM [2x], SLOW [1x])",
+            "8-Node Heterogeneous (2 VERY_FAST, 2 FAST, 2 MEDIUM, 2 SLOW)",
+            "Uniform Cluster (All nodes equal 1.0x)",
+            "Custom Speeds per Worker",
+        ],
+        index=0,
+    )
+
+    worker_speeds = []
+    heterogeneous_nodes = True
+    if "8-Node" in cluster_profile:
+        worker_speeds = [8.0, 8.0, 4.0, 4.0, 2.0, 2.0, 1.0, 1.0]
+        num_workers = 8
+    elif "Uniform" in cluster_profile:
+        heterogeneous_nodes = False
+        worker_speeds = [1.0] * int(num_workers)
+    elif "Custom" in cluster_profile:
+        speeds_str = st.text_input("Worker Speeds (comma-separated)", "8.0, 4.0, 2.0, 1.0")
+        try:
+            worker_speeds = [float(x.strip()) for x in speeds_str.split(",") if x.strip()]
+        except Exception:
+            worker_speeds = [8.0, 4.0, 2.0, 1.0]
+    else:
+        # 4-node 8:4:2:1 default
+        worker_speeds = [8.0, 4.0, 2.0, 1.0]
+
+    dynamic_redist = st.checkbox("Enable Dynamic Redistribution (A2WS Runtime Balancing)", value=True)
+
+    with st.expander("🧪 Fault Injection & Node Slowdown Simulation", expanded=False):
+        fcol1, fcol2 = st.columns(2)
+        with fcol1:
+            sim_slowdown_worker = st.number_input("Slowdown Worker ID (-1 = disabled)", -1, 15, -1)
+            sim_slowdown_factor = st.number_input("New Speed Factor", 0.05, 1.0, 0.2, 0.05)
+            sim_slowdown_after = st.number_input("Trigger Slowdown After Tasks", 1, 1000, 15)
+        with fcol2:
+            sim_fail_worker = st.number_input("Fail Worker ID (-1 = disabled)", -1, 15, -1)
+            sim_fail_after = st.number_input("Trigger Failure After Tasks", 1, 1000, 15)
+
     # ── Adaptive-only parameters ─────────────────────────────────────────────
     if algorithm in ("adaptive", "all"):
         st.markdown("---")
@@ -87,20 +134,20 @@ with col_left:
         with p1:
             ewma_alpha     = st.slider("EWMA Alpha (learning rate)", 0.05, 1.0, 0.3, 0.05,
                                        help="α in: est = α·actual + (1-α)·prev_est")
-            min_benefit_ms = float(st.number_input("Min Steal Benefit (ms)", 0.0, 10.0, 0.5, 0.1,
+            min_benefit_ms = float(st.number_input("Min Steal Benefit (ms)", 0.0, 10.0, 0.001, 0.01,
                                                     help="Stealing is skipped if benefit < threshold"))
-            overhead_ms    = float(st.number_input("Estimated Steal Overhead (ms)", 0.0, 5.0, 0.1, 0.05))
+            overhead_ms    = float(st.number_input("Estimated Steal Overhead (ms)", 0.0, 5.0, 0.001, 0.01))
         with p2:
-            max_batch_size    = int(st.number_input("Max Batch Size", 1, 32, 8))
-            min_victim_queue  = int(st.number_input("Min Victim Queue Size", 1, 20, 2))
+            max_batch_size    = int(st.number_input("Max Batch Size", 1, 32, 16))
+            min_victim_queue  = int(st.number_input("Min Victim Queue Size", 1, 20, 1))
             victim_policy     = st.selectbox(
                 "Victim Selection Policy",
                 ["max_remaining_cost", "max_queue", "random"],
                 help="max_remaining_cost: pick victim with most remaining estimated work",
             )
     else:
-        ewma_alpha, min_benefit_ms, overhead_ms = 0.3, 0.5, 0.1
-        max_batch_size, min_victim_queue, victim_policy = 8, 2, "max_remaining_cost"
+        ewma_alpha, min_benefit_ms, overhead_ms = 0.3, 0.001, 0.001
+        max_batch_size, min_victim_queue, victim_policy = 16, 1, "max_remaining_cost"
 
 with col_right:
     st.subheader("Configuration Summary")
@@ -112,6 +159,14 @@ with col_right:
         min_complexity=min_complexity,
         max_complexity=max_complexity,
         random_seed=int(random_seed),
+        heterogeneous_nodes=heterogeneous_nodes,
+        worker_speeds=worker_speeds,
+        dynamic_redistribution=dynamic_redist,
+        simulate_slowdown_worker=int(sim_slowdown_worker),
+        simulate_slowdown_factor=float(sim_slowdown_factor),
+        simulate_slowdown_after_tasks=int(sim_slowdown_after),
+        simulate_fail_worker=int(sim_fail_worker),
+        simulate_fail_after_tasks=int(sim_fail_after),
         stealing=StealingConfig(
             ewma_alpha=ewma_alpha,
             min_benefit_ms=min_benefit_ms,

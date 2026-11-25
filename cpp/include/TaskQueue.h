@@ -17,11 +17,16 @@ public:
 
     // Owner operations (called by the queue's owning worker)
     void push_front(Task t);
+    void push_back(Task t);
+    void push_batch_front(std::vector<Task> tasks);
     std::optional<Task> pop_front();
 
     // Thief operations (called by other workers stealing work)
     std::optional<Task> steal_back();
     std::vector<Task> steal_batch(int count);
+
+    // Node failure & recovery operations
+    std::vector<Task> drain_all();
 
     // Inspection
     size_t size() const;

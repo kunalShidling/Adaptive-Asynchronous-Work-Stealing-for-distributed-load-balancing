@@ -182,4 +182,63 @@ void RuntimeMonitor::emit_batch_stolen(int thief_id, int victim_id,
     emit_raw(json);
 }
 
+void RuntimeMonitor::emit_node_classified(int worker_id, const std::string& category,
+                                          double speed_factor, double throughput) {
+    double ts = now_ms();
+    std::string json =
+        "{\"type\":\"node_classified\""
+        ",\"ts\":" + std::to_string(ts) +
+        ",\"worker_id\":" + std::to_string(worker_id) +
+        ",\"category\":\"" + safe_str(category) + "\""
+        ",\"speed_factor\":" + std::to_string(speed_factor) +
+        ",\"throughput\":" + std::to_string(throughput) + "}";
+    emit_raw(json);
+}
+
+void RuntimeMonitor::emit_initial_allocation(int worker_id, int count, const std::string& category) {
+    double ts = now_ms();
+    std::string json =
+        "{\"type\":\"initial_allocation\""
+        ",\"ts\":" + std::to_string(ts) +
+        ",\"worker_id\":" + std::to_string(worker_id) +
+        ",\"count\":" + std::to_string(count) +
+        ",\"category\":\"" + safe_str(category) + "\"}";
+    emit_raw(json);
+}
+
+void RuntimeMonitor::emit_redistribution_performed(int donor_id, int recipient_id,
+                                                   int count, double donor_rem,
+                                                   double recipient_rem) {
+    double ts = now_ms();
+    std::string json =
+        "{\"type\":\"redistribution_performed\""
+        ",\"ts\":" + std::to_string(ts) +
+        ",\"donor_id\":" + std::to_string(donor_id) +
+        ",\"recipient_id\":" + std::to_string(recipient_id) +
+        ",\"tasks_transferred\":" + std::to_string(count) +
+        ",\"donor_rem\":" + std::to_string(donor_rem) +
+        ",\"recipient_rem\":" + std::to_string(recipient_rem) + "}";
+    emit_raw(json);
+}
+
+void RuntimeMonitor::emit_node_slowdown(int worker_id, double new_speed_factor) {
+    double ts = now_ms();
+    std::string json =
+        "{\"type\":\"node_slowdown\""
+        ",\"ts\":" + std::to_string(ts) +
+        ",\"worker_id\":" + std::to_string(worker_id) +
+        ",\"new_speed_factor\":" + std::to_string(new_speed_factor) + "}";
+    emit_raw(json);
+}
+
+void RuntimeMonitor::emit_node_failed(int worker_id, int recovered_tasks) {
+    double ts = now_ms();
+    std::string json =
+        "{\"type\":\"node_failed\""
+        ",\"ts\":" + std::to_string(ts) +
+        ",\"worker_id\":" + std::to_string(worker_id) +
+        ",\"recovered_tasks\":" + std::to_string(recovered_tasks) + "}";
+    emit_raw(json);
+}
+
 // set_enabled and is_enabled are inline in RuntimeMonitor.h

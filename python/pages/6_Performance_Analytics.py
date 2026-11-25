@@ -62,7 +62,7 @@ c10.metric("Steal Rate", f"{steal_rate * 100:.1f}%")
 
 # ── Metric definitions ────────────────────────────────────────────────────────
 with st.expander("📐 Metric Definitions & Formulas"):
-    st.markdown("""
+    st.markdown(r"""
 | Metric | Formula | Source |
 |--------|---------|--------|
 | **Wall Time** | Clock time from experiment start to end | Measured with `high_resolution_clock` |

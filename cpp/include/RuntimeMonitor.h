@@ -33,6 +33,13 @@ public:
     void emit_cost_estimated(int worker_id, uint64_t task_id, int complexity, double estimated_ms);
     void emit_batch_stolen(int thief_id, int victim_id, int batch_size, double overhead_est);
 
+    // Heterogeneous node & Dynamic redistribution events
+    void emit_node_classified(int worker_id, const std::string& category, double speed_factor, double throughput);
+    void emit_initial_allocation(int worker_id, int count, const std::string& category);
+    void emit_redistribution_performed(int donor_id, int recipient_id, int count, double donor_rem, double recipient_rem);
+    void emit_node_slowdown(int worker_id, double new_speed_factor);
+    void emit_node_failed(int worker_id, int recovered_tasks);
+
     // Enable/disable (for performance-sensitive runs)
     void set_enabled(bool enabled) { enabled_ = enabled; }
     bool is_enabled() const { return enabled_; }

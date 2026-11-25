@@ -32,6 +32,23 @@ static SchedulerConfig parse_config(const json& j) {
     cfg.max_complexity = j.value("max_complexity",  5000);
     cfg.random_seed    = j.value("random_seed",     42);
 
+    cfg.heterogeneous_nodes       = j.value("heterogeneous_nodes", true);
+    cfg.dynamic_redistribution    = j.value("dynamic_redistribution", true);
+    cfg.redistribution_interval_ms= j.value("redistribution_interval_ms", 5.0);
+    cfg.imbalance_threshold       = j.value("imbalance_threshold", 0.15);
+
+    if (j.contains("worker_speeds") && j["worker_speeds"].is_array()) {
+        for (const auto& elem : j["worker_speeds"]) {
+            if (elem.is_number()) cfg.worker_speeds.push_back(elem.get<double>());
+        }
+    }
+
+    cfg.simulate_slowdown_worker      = j.value("simulate_slowdown_worker", -1);
+    cfg.simulate_slowdown_factor      = j.value("simulate_slowdown_factor", 0.5);
+    cfg.simulate_slowdown_after_tasks = j.value("simulate_slowdown_after_tasks", 10);
+    cfg.simulate_fail_worker          = j.value("simulate_fail_worker", -1);
+    cfg.simulate_fail_after_tasks     = j.value("simulate_fail_after_tasks", 10);
+
     if (j.contains("stealing")) {
         const auto& s = j["stealing"];
         cfg.stealing.ewma_alpha      = s.value("ewma_alpha",      0.3);

@@ -5,7 +5,13 @@
 
 struct WorkerMetrics {
     int worker_id;
+    std::string node_category;
+    double speed_factor;
+    int initial_assigned;
     int tasks_completed;
+    int tasks_failed;
+    int tasks_redistributed_in;
+    int tasks_redistributed_out;
     int tasks_stolen_from;
     int tasks_stolen_by;
     int steal_attempts;
@@ -13,6 +19,8 @@ struct WorkerMetrics {
     double busy_ms;
     double idle_ms;
     double utilization; // busy_ms / wall_ms
+    double avg_task_duration_ms;
+    double throughput_tasks_per_sec;
 };
 
 struct ExperimentMetrics {
@@ -32,11 +40,13 @@ struct ExperimentMetrics {
     double efficiency;       // speedup / num_workers
     double avg_utilization;  // mean utilization across workers
     double load_imbalance;   // (max_busy - min_busy) / avg_busy or normalized std dev
+    double cluster_throughput; // total tasks / (wall_ms / 1000)
 
-    // Stealing
+    // Stealing & Redistribution
     int total_steals_attempted;
     int total_steals_succeeded;
     int total_tasks_stolen;
+    int total_redistributions;
     double steal_success_rate; // succeeded / attempted (or 0 if no attempts)
 
     // Scheduling overhead (measured separately)
@@ -63,7 +73,8 @@ struct ExperimentMetrics {
         int steals_succeeded,
         int tasks_stolen,
         double sched_overhead_ms,
-        double cost_mape
+        double cost_mape,
+        int total_redistributions = 0
     );
 
     std::string to_json() const;

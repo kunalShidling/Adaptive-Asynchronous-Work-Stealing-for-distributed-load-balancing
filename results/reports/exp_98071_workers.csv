@@ -1,0 +1,5 @@
+worker_id,node_category,speed_factor,initial_assigned,tasks_completed,tasks_failed,tasks_redistributed_in,tasks_redistributed_out,tasks_stolen_by,tasks_stolen_from,steal_attempts,steal_successes,busy_ms,idle_ms,utilization,avg_task_duration_ms,throughput_tasks_per_sec
+0,VERY_FAST,8.0,1067,817,0,1,251,1,33,2,1,386.6818,0.0,0.673061,0.378154,2644.423138
+1,FAST,4.0,534,481,0,0,53,0,8,3,0,462.6846,0.0,0.805353,1.343047,744.575504
+2,MEDIUM,2.0,267,460,0,195,2,20,0,6,3,491.0992,0.0,0.854811,0.983597,1016.67614
+3,SLOW,1.0,133,243,0,117,7,21,1,2,2,510.7222,0.0,0.888967,1.856031,538.784229

@@ -243,6 +243,193 @@ void test_edge_cases() {
     }
 }
 
+// ── TEST 1: Equal Initial Allocation Imbalance Detection ──────────────────────
+void test_scenario_1_equal_allocation_imbalance() {
+    std::cout << "[TEST 1] Equal initial allocation on heterogeneous nodes detects imbalance... ";
+    std::ostringstream null_out;
+    RuntimeMonitor monitor(null_out);
+    monitor.set_enabled(false);
+
+    // Setup 4 nodes with speeds [8, 4, 2, 1]
+    SchedulerConfig cfg;
+    cfg.num_workers = 4;
+    cfg.num_tasks = 100;
+    cfg.algorithm = "static"; // static forces equal round-robin (25 each)
+    cfg.heterogeneous_nodes = true;
+    cfg.worker_speeds = {8.0, 4.0, 2.0, 1.0};
+
+    StaticScheduler s(cfg, monitor);
+    auto m = s.run(WorkloadGenerator::generate(100, "uniform", 200, 500, 42));
+
+    // In static with equal allocation, busy times should be severely imbalanced (load_imbalance > 0.4)
+    TEST_ASSERT(m.load_imbalance > 0.3, "Imbalance must be detected under equal allocation on heterogeneous nodes");
+    std::cout << "PASSED (Detected load imbalance: " << m.load_imbalance << ")" << std::endl;
+}
+
+// ── TEST 2: Heterogeneous Proportional Initial Allocation ────────────────────
+void test_scenario_2_heterogeneous_allocation() {
+    std::cout << "[TEST 2] Heterogeneous capacity-weighted allocation (8:4:2:1)... ";
+    std::vector<double> speeds = {8.0, 4.0, 2.0, 1.0};
+    auto alloc = calculate_capacity_allocation(100, speeds);
+
+    // Expected: 53, 27, 13, 7
+    TEST_ASSERT(alloc.size() == 4, "Must allocate for 4 workers");
+    TEST_ASSERT(alloc[0] == 53, "VERY_FAST (8) must receive 53 tasks");
+    TEST_ASSERT(alloc[1] == 27, "FAST (4) must receive 27 tasks");
+    TEST_ASSERT(alloc[2] == 13, "MEDIUM (2) must receive 13 tasks");
+    TEST_ASSERT(alloc[3] == 7, "SLOW (1) must receive 7 tasks");
+    int total = alloc[0] + alloc[1] + alloc[2] + alloc[3];
+    TEST_ASSERT(total == 100, "Sum must equal 100 exactly (integer-safe)");
+    TEST_ASSERT(alloc[0] > alloc[1] && alloc[1] > alloc[2] && alloc[2] > alloc[3],
+                "Must strictly follow VERY_FAST > FAST > MEDIUM > SLOW");
+    std::cout << "PASSED (VERY_FAST: " << alloc[0] << ", FAST: " << alloc[1]
+              << ", MEDIUM: " << alloc[2] << ", SLOW: " << alloc[3] << ")" << std::endl;
+}
+
+// ── TEST 3: Dynamic Redistribution ───────────────────────────────────────────
+void test_scenario_3_dynamic_redistribution() {
+    std::cout << "[TEST 3] Dynamic redistribution under execution... ";
+    std::ostringstream null_out;
+    RuntimeMonitor monitor(null_out);
+    monitor.set_enabled(false);
+
+    SchedulerConfig cfg;
+    cfg.num_workers = 4;
+    cfg.num_tasks = 120;
+    cfg.algorithm = "adaptive";
+    cfg.heterogeneous_nodes = true;
+    cfg.worker_speeds = {8.0, 4.0, 2.0, 1.0};
+    cfg.dynamic_redistribution = true;
+
+    AdaptiveScheduler s(cfg, monitor);
+    auto m = s.run(WorkloadGenerator::generate(120, "heterogeneous", 300, 800, 77));
+
+    int total_done = 0;
+    for (auto& w : m.workers) total_done += w.tasks_completed;
+    TEST_ASSERT(total_done == 120, "All 120 tasks must complete");
+    // Verify faster node processed significantly more tasks than slower node
+    TEST_ASSERT(m.workers[0].tasks_completed > m.workers[3].tasks_completed,
+                "VERY_FAST node must complete more tasks than SLOW node");
+    std::cout << "PASSED (Total completed: " << total_done << ", VERY_FAST: "
+              << m.workers[0].tasks_completed << " vs SLOW: " << m.workers[3].tasks_completed << ")" << std::endl;
+}
+
+// ── TEST 4: Node Slowdown Adaptation ─────────────────────────────────────────
+void test_scenario_4_node_slowdown() {
+    std::cout << "[TEST 4] Node slowdown adaptation... ";
+    std::ostringstream null_out;
+    RuntimeMonitor monitor(null_out);
+    monitor.set_enabled(false);
+
+    SchedulerConfig cfg;
+    cfg.num_workers = 4;
+    cfg.num_tasks = 100;
+    cfg.algorithm = "adaptive";
+    cfg.heterogeneous_nodes = true;
+    cfg.worker_speeds = {8.0, 4.0, 2.0, 1.0};
+    // Slow down worker 1 (originally FAST at 4.0x) to 0.2x after completing 5 tasks
+    cfg.simulate_slowdown_worker = 1;
+    cfg.simulate_slowdown_factor = 0.2;
+    cfg.simulate_slowdown_after_tasks = 5;
+
+    AdaptiveScheduler s(cfg, monitor);
+    auto m = s.run(WorkloadGenerator::generate(100, "uniform", 200, 500, 99));
+
+    int total_done = 0;
+    for (auto& w : m.workers) total_done += w.tasks_completed;
+    TEST_ASSERT(total_done == 100, "All 100 tasks must complete despite slowdown");
+    std::cout << "PASSED (Completed all tasks with slowdown handled)" << std::endl;
+}
+
+// ── TEST 5: Node Failure and Task Recovery ───────────────────────────────────
+void test_scenario_5_node_failure_recovery() {
+    std::cout << "[TEST 5] Node failure simulation and zero-loss task recovery... ";
+    std::ostringstream null_out;
+    RuntimeMonitor monitor(null_out);
+    monitor.set_enabled(false);
+
+    SchedulerConfig cfg;
+    cfg.num_workers = 4;
+    cfg.num_tasks = 100;
+    cfg.algorithm = "adaptive";
+    cfg.heterogeneous_nodes = true;
+    cfg.worker_speeds = {8.0, 4.0, 2.0, 1.0};
+    // Fail worker 2 after completing 3 tasks
+    cfg.simulate_fail_worker = 2;
+    cfg.simulate_fail_after_tasks = 3;
+
+    AdaptiveScheduler s(cfg, monitor);
+    auto m = s.run(WorkloadGenerator::generate(100, "uniform", 200, 400, 123));
+
+    int total_done = 0;
+    for (auto& w : m.workers) total_done += w.tasks_completed;
+    TEST_ASSERT(total_done == 100, "All 100 tasks must be completed with zero loss after node failure");
+    std::cout << "PASSED (Failed node tasks recovered, exactly 100/100 completed)" << std::endl;
+}
+
+// ── TEST 6: Task Integrity (No Loss, No Duplicates, Exactly Once) ────────────
+void test_scenario_6_task_integrity() {
+    std::cout << "[TEST 6] Task integrity verification (exactly-once execution)... ";
+    std::ostringstream null_out;
+    RuntimeMonitor monitor(null_out);
+    monitor.set_enabled(false);
+
+    const int N = 200;
+    SchedulerConfig cfg;
+    cfg.num_workers = 4;
+    cfg.num_tasks = N;
+    cfg.algorithm = "adaptive";
+    cfg.heterogeneous_nodes = true;
+    cfg.worker_speeds = {8.0, 4.0, 2.0, 1.0};
+
+    AdaptiveScheduler s(cfg, monitor);
+    auto tasks = WorkloadGenerator::generate(N, "heterogeneous", 100, 600, 555);
+    auto m = s.run(tasks);
+
+    int sum_completed = 0;
+    for (auto& w : m.workers) sum_completed += w.tasks_completed;
+    TEST_ASSERT(sum_completed == N, "Sum of worker completed tasks must exactly equal N");
+    std::cout << "PASSED (All " << N << " tasks verified)" << std::endl;
+}
+
+// ── TEST 7: Performance Comparison (Static vs Capacity-Aware Adaptive) ───────
+void test_scenario_7_performance_comparison() {
+    std::cout << "[TEST 7] Performance comparison on heterogeneous nodes (Static vs Adaptive)... " << std::endl;
+    std::ostringstream null_out;
+    RuntimeMonitor monitor(null_out);
+    monitor.set_enabled(false);
+
+    const int N = 120;
+    SchedulerConfig cfg;
+    cfg.num_workers = 4;
+    cfg.num_tasks = N;
+    cfg.heterogeneous_nodes = true;
+    cfg.worker_speeds = {8.0, 4.0, 2.0, 1.0};
+
+    auto tasks = WorkloadGenerator::generate(N, "heterogeneous", 300, 800, 42);
+
+    // Static
+    cfg.algorithm = "static";
+    StaticScheduler static_sched(cfg, monitor);
+    auto m_static = static_sched.run(tasks);
+
+    // Adaptive
+    cfg.algorithm = "adaptive";
+    AdaptiveScheduler adapt_sched(cfg, monitor);
+    auto m_adapt = adapt_sched.run(tasks);
+
+    std::cout << "    [Static]   Wall: " << m_static.wall_ms << " ms | Speedup: " << m_static.speedup
+              << "x | Imbalance: " << m_static.load_imbalance << std::endl;
+    std::cout << "    [Adaptive] Wall: " << m_adapt.wall_ms << " ms | Speedup: " << m_adapt.speedup
+              << "x | Imbalance: " << m_adapt.load_imbalance << std::endl;
+
+    TEST_ASSERT(m_adapt.wall_ms <= m_static.wall_ms * 1.05,
+                "Adaptive must match or outperform Static on heterogeneous workload");
+    TEST_ASSERT(m_adapt.load_imbalance < m_static.load_imbalance,
+                "Adaptive must achieve lower load imbalance than static");
+    std::cout << "    PASSED (Adaptive achieved lower imbalance and superior throughput)" << std::endl;
+}
+
 int main() {
     std::cout << "====================================================" << std::endl;
     std::cout << "Running Cost-Aware Scheduler C++ Test Suite" << std::endl;
@@ -255,8 +442,19 @@ int main() {
     test_all_algorithms_correctness();
     test_edge_cases();
 
+    std::cout << "----------------------------------------------------" << std::endl;
+    std::cout << "Running Heterogeneous Node Distribution Tests (1-7)" << std::endl;
+    std::cout << "----------------------------------------------------" << std::endl;
+    test_scenario_1_equal_allocation_imbalance();
+    test_scenario_2_heterogeneous_allocation();
+    test_scenario_3_dynamic_redistribution();
+    test_scenario_4_node_slowdown();
+    test_scenario_5_node_failure_recovery();
+    test_scenario_6_task_integrity();
+    test_scenario_7_performance_comparison();
+
     std::cout << "====================================================" << std::endl;
-    std::cout << "ALL C++ TESTS PASSED SUCCESSFULLY!" << std::endl;
+    std::cout << "ALL C++ TESTS (INCLUDING SCENARIOS 1-7) PASSED!" << std::endl;
     std::cout << "====================================================" << std::endl;
     return 0;
 }

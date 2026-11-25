@@ -19,7 +19,8 @@ ExperimentMetrics ExperimentMetrics::compute(
     int steals_succeeded,
     int tasks_stolen,
     double sched_overhead_ms,
-    double cost_mape)
+    double cost_mape,
+    int total_redistributions)
 {
     ExperimentMetrics m;
     m.experiment_id           = exp_id;
@@ -33,9 +34,13 @@ ExperimentMetrics ExperimentMetrics::compute(
     m.total_steals_attempted  = steals_attempted;
     m.total_steals_succeeded  = steals_succeeded;
     m.total_tasks_stolen      = tasks_stolen;
+    m.total_redistributions   = total_redistributions;
     m.scheduling_overhead_ms  = sched_overhead_ms;
     m.cost_estimation_mape    = cost_mape;
     m.workers                 = worker_data;
+
+    // Cluster throughput (tasks / sec)
+    m.cluster_throughput = (wall_ms > 0.0) ? (static_cast<double>(num_tasks) / (wall_ms / 1000.0)) : 0.0;
 
     // Speedup and efficiency
     m.speedup    = (wall_ms > 0.0) ? (sequential_ms / wall_ms) : 0.0;
@@ -97,6 +102,8 @@ std::string ExperimentMetrics::to_json() const {
         << ",\"total_steals_attempted\":" << total_steals_attempted
         << ",\"total_steals_succeeded\":" << total_steals_succeeded
         << ",\"total_tasks_stolen\":" << total_tasks_stolen
+        << ",\"total_redistributions\":" << total_redistributions
+        << ",\"cluster_throughput\":" << cluster_throughput
         << ",\"steal_success_rate\":" << steal_success_rate
         << ",\"scheduling_overhead_ms\":" << scheduling_overhead_ms
         << ",\"cost_estimation_mape\":" << cost_estimation_mape
@@ -107,7 +114,13 @@ std::string ExperimentMetrics::to_json() const {
         if (i > 0) oss << ",";
         oss << "{"
             << "\"worker_id\":" << wd.worker_id
+            << ",\"node_category\":\"" << wd.node_category << "\""
+            << ",\"speed_factor\":" << wd.speed_factor
+            << ",\"initial_assigned\":" << wd.initial_assigned
             << ",\"tasks_completed\":" << wd.tasks_completed
+            << ",\"tasks_failed\":" << wd.tasks_failed
+            << ",\"tasks_redistributed_in\":" << wd.tasks_redistributed_in
+            << ",\"tasks_redistributed_out\":" << wd.tasks_redistributed_out
             << ",\"tasks_stolen_by\":" << wd.tasks_stolen_by
             << ",\"tasks_stolen_from\":" << wd.tasks_stolen_from
             << ",\"steal_attempts\":" << wd.steal_attempts
@@ -115,6 +128,8 @@ std::string ExperimentMetrics::to_json() const {
             << ",\"busy_ms\":" << wd.busy_ms
             << ",\"idle_ms\":" << wd.idle_ms
             << ",\"utilization\":" << wd.utilization
+            << ",\"avg_task_duration_ms\":" << wd.avg_task_duration_ms
+            << ",\"throughput_tasks_per_sec\":" << wd.throughput_tasks_per_sec
             << "}";
     }
     oss << "]}";

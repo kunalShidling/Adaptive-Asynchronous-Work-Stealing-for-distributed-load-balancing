@@ -6,6 +6,18 @@ void TaskQueue::push_front(Task t) {
     deque_.push_front(std::move(t));
 }
 
+void TaskQueue::push_back(Task t) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    deque_.push_back(std::move(t));
+}
+
+void TaskQueue::push_batch_front(std::vector<Task> tasks) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    for (auto it = tasks.rbegin(); it != tasks.rend(); ++it) {
+        deque_.push_front(std::move(*it));
+    }
+}
+
 std::optional<Task> TaskQueue::pop_front() {
     std::lock_guard<std::mutex> lock(mtx_);
     if (deque_.empty()) return std::nullopt;
@@ -33,6 +45,17 @@ std::vector<Task> TaskQueue::steal_batch(int count) {
         deque_.pop_back();
     }
     return stolen;
+}
+
+std::vector<Task> TaskQueue::drain_all() {
+    std::lock_guard<std::mutex> lock(mtx_);
+    std::vector<Task> tasks;
+    tasks.reserve(deque_.size());
+    while (!deque_.empty()) {
+        tasks.push_back(std::move(deque_.front()));
+        deque_.pop_front();
+    }
+    return tasks;
 }
 
 size_t TaskQueue::size() const {

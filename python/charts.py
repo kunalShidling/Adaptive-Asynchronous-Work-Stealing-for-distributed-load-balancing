@@ -141,23 +141,25 @@ def steal_timeline(steal_events: List[dict]) -> go.Figure:
             x=[e.get("ts", 0) for e in successes],
             y=[e.get("tasks_stolen", 1) for e in successes],
             mode="markers", name="Successful Steal",
-            marker=dict(color="#96CEB4", size=10, symbol="circle"),
-            hovertemplate="<b>Steal Success</b><br>Thief: W%{customdata[0]}<br>Victim: W%{customdata[1]}<br>Tasks: %{y}<extra></extra>",
+            marker=dict(color="#00E676", size=12, symbol="circle", line=dict(width=1, color="#FFFFFF")),
+            hovertemplate="<b>Steal Success</b><br>Thief: Node %{customdata[0]}<br>Victim: Node %{customdata[1]}<br>Batch Stolen: %{y} tasks<extra></extra>",
             customdata=[[e.get("thief_id", "?"), e.get("victim_id", "?")] for e in successes],
         ))
     if failures:
         fig.add_trace(go.Scatter(
             x=[e.get("ts", 0) for e in failures],
             y=[0] * len(failures),
-            mode="markers", name="Failed Steal",
-            marker=dict(color="#FF6B6B", size=8, symbol="x"),
-            hovertemplate="<b>Steal Failed</b><br>Reason: %{customdata}<extra></extra>",
+            mode="markers", name="Failed Steal Attempt",
+            marker=dict(color="#FF5252", size=8, symbol="x"),
+            hovertemplate="<b>Steal Attempt Skipped/Failed</b><br>Reason: %{customdata}<extra></extra>",
             customdata=[e.get("reason", "?") for e in failures],
         ))
     fig.update_layout(
-        template=DARK_TEMPLATE, title="Stealing Events Timeline",
-        xaxis_title="Time (ms epoch)", yaxis_title="Tasks Stolen",
+        template=DARK_TEMPLATE, title="Stealing Events Timeline (Successful Steals vs Attempts)",
+        xaxis_title="Time (ms epoch)", yaxis_title="Tasks Stolen (Batch Size)",
+        yaxis=dict(rangemode="tozero"),
         paper_bgcolor="#0e1117", plot_bgcolor="#161b2e",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     return fig
 
@@ -219,3 +221,148 @@ def worker_activity_heatmap(task_records: List[dict], num_workers: int) -> go.Fi
         paper_bgcolor="#0e1117",
     )
     return fig
+
+
+CATEGORY_COLORS = {
+    "VERY_FAST": "#9B51E0", # Purple
+    "FAST": "#27AE60",      # Green
+    "MEDIUM": "#2F80ED",    # Blue
+    "SLOW": "#EB5757",      # Red
+}
+
+
+def workload_before_redistribution_bar(snapshot: dict) -> go.Figure:
+    """Visualization A: Actual initial task allocation before redistribution."""
+    workers = snapshot.get("workers", {})
+    init_alloc = snapshot.get("initial_allocations", {})
+    if not workers and not init_alloc:
+        return _empty_fig("A. Before Redistribution (Initial Task Allocation)")
+
+    sorted_ids = sorted(workers.keys()) if workers else sorted(init_alloc.keys())
+    names = []
+    counts = []
+    colors = []
+    for wid in sorted_ids:
+        w = workers.get(wid, {})
+        cat = w.get("category", "MEDIUM")
+        count = init_alloc.get(wid, w.get("initial_assigned", 0))
+        names.append(f"Node {wid} [{cat}]")
+        counts.append(count)
+        colors.append(CATEGORY_COLORS.get(cat, "#4ECDC4"))
+
+    fig = go.Figure(go.Bar(
+        x=names, y=counts,
+        marker_color=colors,
+        text=[f"{c} tasks" for c in counts],
+        textposition="auto",
+    ))
+    fig.update_layout(
+        template=DARK_TEMPLATE,
+        title="<b>A. BEFORE REDISTRIBUTION</b> — Initial Capacity Allocation",
+        xaxis_title="Computing Node [Category]",
+        yaxis_title="Initial Tasks Assigned",
+        paper_bgcolor="#0e1117", plot_bgcolor="#161b2e",
+    )
+    return fig
+
+
+def workload_after_redistribution_bar(snapshot: dict) -> go.Figure:
+    """Visualization B: Actual task allocation after dynamic redistribution."""
+    workers = snapshot.get("workers", {})
+    cur_alloc = snapshot.get("current_allocations", {})
+    if not workers and not cur_alloc:
+        return _empty_fig("B. After Redistribution (Current Dynamic Allocation)")
+
+    sorted_ids = sorted(workers.keys()) if workers else sorted(cur_alloc.keys())
+    names = []
+    counts = []
+    colors = []
+    for wid in sorted_ids:
+        w = workers.get(wid, {})
+        cat = w.get("category", "MEDIUM")
+        count = cur_alloc.get(wid, w.get("initial_assigned", 0) - w.get("tasks_redistributed_out", 0) + w.get("tasks_redistributed_in", 0))
+        names.append(f"Node {wid} [{cat}]")
+        counts.append(count)
+        colors.append(CATEGORY_COLORS.get(cat, "#4ECDC4"))
+
+    fig = go.Figure(go.Bar(
+        x=names, y=counts,
+        marker_color=colors,
+        text=[f"{c} tasks" for c in counts],
+        textposition="auto",
+    ))
+    fig.update_layout(
+        template=DARK_TEMPLATE,
+        title="<b>B. AFTER REDISTRIBUTION</b> — Dynamic Workload Allocation",
+        xaxis_title="Computing Node [Category]",
+        yaxis_title="Current Tasks Owned",
+        paper_bgcolor="#0e1117", plot_bgcolor="#161b2e",
+    )
+    return fig
+
+
+def redistribution_comparison_bar(snapshot: dict) -> go.Figure:
+    """Side-by-side grouped bar chart comparing Before vs After Redistribution."""
+    workers = snapshot.get("workers", {})
+    init_alloc = snapshot.get("initial_allocations", {})
+    cur_alloc = snapshot.get("current_allocations", {})
+    if not workers:
+        return _empty_fig("Workload Rebalancing: Before vs After")
+
+    sorted_ids = sorted(workers.keys())
+    names = [f"Node {wid} [{workers[wid].get('category', 'MED')}]" for wid in sorted_ids]
+    before_vals = [init_alloc.get(wid, workers[wid].get("initial_assigned", 0)) for wid in sorted_ids]
+    after_vals = [cur_alloc.get(wid, before_vals[i]) for i, wid in enumerate(sorted_ids)]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        name="Before Redistribution",
+        x=names, y=before_vals,
+        marker_color="#8884d8",
+        text=before_vals, textposition="auto",
+    ))
+    fig.add_trace(go.Bar(
+        name="After Redistribution",
+        x=names, y=after_vals,
+        marker_color="#00C49F",
+        text=after_vals, textposition="auto",
+    ))
+
+    fig.update_layout(
+        barmode="group",
+        template=DARK_TEMPLATE,
+        title="Workload Comparison: Before vs After Dynamic Redistribution",
+        xaxis_title="Computing Node",
+        yaxis_title="Task Count",
+        paper_bgcolor="#0e1117", plot_bgcolor="#161b2e",
+    )
+    return fig
+
+
+def node_throughput_bar(snapshot: dict) -> go.Figure:
+    """Measured processing speed / throughput per node in tasks per second."""
+    workers = snapshot.get("workers", {})
+    if not workers:
+        return _empty_fig("Measured Node Throughput")
+
+    sorted_ids = sorted(workers.keys())
+    names = [f"Node {wid} [{workers[wid].get('category', 'MED')}]" for wid in sorted_ids]
+    throughputs = [workers[wid].get("throughput_tasks_per_sec", 0.0) for wid in sorted_ids]
+    speeds = [workers[wid].get("speed_factor", 1.0) for wid in sorted_ids]
+    colors = [CATEGORY_COLORS.get(workers[wid].get("category", "MEDIUM"), "#2F80ED") for wid in sorted_ids]
+
+    fig = go.Figure(go.Bar(
+        x=names, y=throughputs,
+        marker_color=colors,
+        text=[f"{tp:.1f} t/s ({s:.1f}x)" for tp, s in zip(throughputs, speeds)],
+        textposition="auto",
+    ))
+    fig.update_layout(
+        template=DARK_TEMPLATE,
+        title="Measured Node Processing Throughput (Tasks / Sec)",
+        xaxis_title="Computing Node",
+        yaxis_title="Throughput (tasks/s)",
+        paper_bgcolor="#0e1117", plot_bgcolor="#161b2e",
+    )
+    return fig
+

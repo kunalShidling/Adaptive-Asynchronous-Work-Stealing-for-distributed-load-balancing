@@ -32,10 +32,10 @@ WORKLOAD_TYPES = {
 @dataclass
 class StealingConfig:
     ewma_alpha: float = 0.3
-    min_benefit_ms: float = 0.5
-    overhead_ms: float = 0.1
-    max_batch_size: int = 8
-    min_victim_queue: int = 2
+    min_benefit_ms: float = 0.001
+    overhead_ms: float = 0.001
+    max_batch_size: int = 16
+    min_victim_queue: int = 1
     victim_policy: str = "max_remaining_cost"
 
 
@@ -51,6 +51,20 @@ class ExperimentConfig:
     random_seed: int = 42
     results_dir: str = RESULTS_DIR
     stealing: StealingConfig = field(default_factory=StealingConfig)
+
+    # Heterogeneous Node Architecture
+    heterogeneous_nodes: bool = True
+    worker_speeds: list = field(default_factory=list)
+    dynamic_redistribution: bool = True
+    redistribution_interval_ms: float = 5.0
+    imbalance_threshold: float = 0.15
+
+    # Simulation hooks (slowdown & failure)
+    simulate_slowdown_worker: int = -1
+    simulate_slowdown_factor: float = 0.5
+    simulate_slowdown_after_tasks: int = 10
+    simulate_fail_worker: int = -1
+    simulate_fail_after_tasks: int = 10
 
     def to_json(self) -> str:
         d = asdict(self)

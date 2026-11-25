@@ -93,6 +93,39 @@ class TestEventProcessor(unittest.TestCase):
         self.assertTrue(ep.experiment_completed)
         self.assertEqual(ep.wall_ms, 10.0)
 
+    def test_heterogeneous_events(self):
+        ep = EventProcessor()
+        ep.process_line('{"type":"experiment_started","ts":1000,"exp_id":2,"num_workers":4,"num_tasks":100,"algorithm":"adaptive"}')
+        ep.process_line('{"type":"node_classified","ts":1001,"worker_id":0,"category":"VERY_FAST","speed_factor":8.0,"throughput":1500.0}')
+        ep.process_line('{"type":"node_classified","ts":1001,"worker_id":3,"category":"SLOW","speed_factor":1.0,"throughput":200.0}')
+        self.assertEqual(ep.workers[0].category, "VERY_FAST")
+        self.assertEqual(ep.workers[0].speed_factor, 8.0)
+        self.assertEqual(ep.workers[3].category, "SLOW")
+
+        ep.process_line('{"type":"initial_allocation","ts":1002,"worker_id":0,"count":53,"category":"VERY_FAST"}')
+        ep.process_line('{"type":"initial_allocation","ts":1002,"worker_id":1,"count":27,"category":"FAST"}')
+        ep.process_line('{"type":"initial_allocation","ts":1002,"worker_id":2,"count":13,"category":"MEDIUM"}')
+        ep.process_line('{"type":"initial_allocation","ts":1002,"worker_id":3,"count":7,"category":"SLOW"}')
+        self.assertEqual(ep.initial_allocations[0], 53)
+        self.assertEqual(ep.initial_allocations[3], 7)
+
+        ep.process_line('{"type":"redistribution_performed","ts":1005,"donor_id":3,"recipient_id":0,"tasks_transferred":3,"donor_rem":4.0,"recipient_rem":20.0}')
+        self.assertEqual(ep.redistribution_count, 1)
+        self.assertEqual(ep.workers[3].tasks_redistributed_out, 3)
+        self.assertEqual(ep.workers[0].tasks_redistributed_in, 3)
+
+        ep.process_line('{"type":"node_slowdown","ts":1006,"worker_id":1,"new_speed_factor":0.5}')
+        self.assertEqual(ep.workers[1].speed_factor, 0.5)
+
+        ep.process_line('{"type":"node_failed","ts":1007,"worker_id":2,"recovered_tasks":5}')
+        self.assertEqual(ep.workers[2].state, "failed")
+        self.assertEqual(ep.workers[2].tasks_failed, 5)
+
+        snap = ep.get_snapshot()
+        self.assertEqual(snap["initial_allocations"][0], 53)
+        self.assertEqual(snap["current_allocations"][0], 56) # 53 + 3
+        self.assertEqual(snap["current_allocations"][3], 4)  # 7 - 3
+
 class TestEngineIntegration(unittest.TestCase):
     def test_single_algorithm_run(self):
         cfg = ExperimentConfig(
@@ -160,6 +193,54 @@ class TestEngineIntegration(unittest.TestCase):
         self.assertIn("dynamic", algo_names)
         self.assertIn("work_stealing", algo_names)
         self.assertIn("adaptive", algo_names)
+
+    def test_heterogeneous_distribution_order(self):
+        cfg = ExperimentConfig(
+            experiment_id=8890,
+            algorithm="adaptive",
+            num_workers=4,
+            num_tasks=100,
+            workload_type="heterogeneous",
+            min_complexity=300,
+            max_complexity=800,
+            random_seed=42,
+            heterogeneous_nodes=True,
+            worker_speeds=[8.0, 4.0, 2.0, 1.0],
+            dynamic_redistribution=True,
+        )
+        runner = EngineRunner(cfg)
+        runner.start()
+
+        timeout = 15.0
+        start = time.time()
+        while not runner.is_done() and (time.time() - start) < timeout:
+            time.sleep(0.1)
+
+        self.assertTrue(runner.is_done())
+        self.assertEqual(runner.returncode, 0)
+
+        summary = runner.get_summary()
+        self.assertIsNotNone(summary)
+        workers = summary.get("workers", [])
+        self.assertEqual(len(workers), 4)
+
+        # Verify initial assignment follows strictly 53, 27, 13, 7
+        w0, w1, w2, w3 = workers[0], workers[1], workers[2], workers[3]
+        self.assertEqual(w0.get("node_category"), "VERY_FAST")
+        self.assertEqual(w1.get("node_category"), "FAST")
+        self.assertEqual(w2.get("node_category"), "MEDIUM")
+        self.assertEqual(w3.get("node_category"), "SLOW")
+
+        self.assertEqual(w0.get("initial_assigned"), 53)
+        self.assertEqual(w1.get("initial_assigned"), 27)
+        self.assertEqual(w2.get("initial_assigned"), 13)
+        self.assertEqual(w3.get("initial_assigned"), 7)
+
+        # Verify VERY_FAST completed significantly more than SLOW
+        self.assertGreater(w0.get("tasks_completed", 0), w3.get("tasks_completed", 0))
+
+        total_done = sum(w.get("tasks_completed", 0) for w in workers)
+        self.assertEqual(total_done, 100, "All 100 tasks must complete exactly once")
 
 if __name__ == "__main__":
     unittest.main()
